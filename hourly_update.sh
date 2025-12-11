@@ -2,8 +2,8 @@
 
 # ================= CONFIGURATION =================
 # ⚠️ REPLACE WITH YOUR NEW TOKEN
-TOKEN="8362566349:AAH-9gYhLfaNg3Dljq_ZAWBReNiJMDPOg4w"
-CHAT_ID="457218247"
+TOKEN="YOUR_TELEGRAM_API"
+CHAT_ID="YOU_CHAT_ID"
 LOG="/var/log/router-hourly.log"
 
 POLL_INTERVAL=10        # Check Telegram every 10s
