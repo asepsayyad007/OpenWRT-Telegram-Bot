@@ -51,13 +51,11 @@ Author: **Asep Sayyad**
 4. Save your **Bot Token**
 
 ### Get Chat ID
-Send message to your bot and run:
+Send message to your bot 2-3 times and run:
 ```
-https://api.telegram.org/botTOKEN/getUpdates
+https://api.telegram.org/bot<Your_TOKEN_Here>/getUpdates
 ```
 Look for `"chat":{"id":123456789}`
-
----
 
 ## 🔍 Verification
 ```
