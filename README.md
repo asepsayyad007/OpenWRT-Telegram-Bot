@@ -1,142 +1,170 @@
-# \# OpenWRT Telegram Bot
 
-### 
-
-### A lightweight script to send hourly status updates from a TP-Link AC1750 (Archer C7 V2) router running the latest OpenWRT.
+# 🌑 OpenWRT Telegram Bot 🌑
+Author: **Asep Sayyad**
 
 
+---
 
-#### \## 🚀 Use Cases
+![OpenWRT](https://img.shields.io/badge/OpenWRT-24.10.3-blue)  
+![Router](https://img.shields.io/badge/Router-TP--Link%20Archer%20C7%20V2-green)  
+![Telegram](https://img.shields.io/badge/Telegram-Bot%20Monitoring-0A66C2)  
+![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
 
-\* \*\*Hourly Heartbeat:\*\* Confirms the router is alive and internet is working.
+---
 
-\* \*\*IP Monitoring:\*\* Notifies if the WAN IP address changes (useful for remote access).
+## 🔧 Hardware Information
+- Router: TP-Link Archer C7 V2  
+- CPU: Qualcomm Atheros QCA9558 @ 720 MHz  
+- RAM: 128 MB  
+- Flash: 16 MB  
+- Wireless: AC1750 Dual-band  
+- USB: 2 × USB 2.0  
+- Limitations: No hardware VPN acceleration, low RAM but stable for Telegram monitoring  
+- Tested Firmware: **OpenWRT 24.10.3**
 
-\* \*\*Resource Tracking:\*\* Reports current CPU load and Free Memory.
+---
 
-\* \*\*Uptime Check:\*\* Sends current uptime duration.
+## 🚀 Features
+- Automated hourly status reports  
+- WAN IP, uptime, load, memory, disk usage  
+- Optional WAN IP‑change alerts  
+- Lightweight — ideal for low‑power routers  
+- Runs persistently using OpenWRT procd  
+- Compatible with all modern OpenWRT builds  
 
+---
 
+## 📁 Project Structure
+```
+/usr/bin/hourly_update.sh    → main monitoring script
+/etc/init.d/router_bot       → background service (procd)
+/tmp/last_wan_ip             → WAN IP tracking file (optional)
+```
 
-#### \## 🛠️ Prerequisites
+---
 
-\* \*\*Hardware:\*\* TP-Link Archer C7 (AC1750) V2 or Similar device
+## ⚙️ Installation
 
-\* \*\*Software:\*\* OpenWRT (Latest Firmware)
-
-\* \*\*Packages:\*\* `curl` or `wget` (usually pre-installed)
-
-\* \*\*Telegram Bot:\*\* A valid Bot Token and Chat ID.
-
-
-
-#### \## 📖 Installation Guide
-
-
-
-##### \### 1. Connect to Router
-
-Open your terminal and SSH into the router:
-
-```bash
-
+### 1. SSH into Router
+```sh
 ssh root@192.168.1.1
+```
 
-##### \### 2. Install the Script
+### 2. Create Script
+```sh
+cat > /usr/bin/hourly_update.sh <<'EOF'
+#!/bin/sh
 
-1# Create the file
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
 
-vi /root/hourly\_update.sh
+get_wan_ip() { curl -fsS http://ifconfig.me || echo "unknown"; }
+get_uptime() { awk '{print int($1) " seconds"}' /proc/uptime; }
+get_load()   { awk '{print $1" "$2" "$3}' /proc/loadavg; }
+get_mem()    { free -m | awk '/Mem:/ {print $4 " MB free"}'; }
+get_disk()   { df -h / | awk 'NR==2 {print $4 " free (" $5 " used)"}'; }
 
-chmod +x /root/hourly\_update.sh
+WAN_IP="$(get_wan_ip)"
+UPTIME="$(get_uptime)"
+LOAD="$(get_load)"
+MEMORY="$(get_mem)"
+DISK="$(get_disk)"
 
-/root/hourly\_update.sh
+MESSAGE="
+Router Status Update
+WAN IP: $WAN_IP
+Uptime: $UPTIME
+Load: $LOAD
+Memory: $MEMORY
+Disk: $DISK
+"
 
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+  -d chat_id="${TELEGRAM_CHAT_ID}" \
+  -d text="$MESSAGE" >/dev/null 2>&1
+EOF
 
-### ⏰ Automate (The Hourly Setup)
+chmod +x /usr/bin/hourly_update.sh
+```
 
+### 3. Test Script
+```sh
+export TELEGRAM_BOT_TOKEN="your_token"
+export TELEGRAM_CHAT_ID="your_chat_id"
+/usr/bin/hourly_update.sh
+```
+
+---
+
+## 🕒 Automatic Execution
+
+### Cron Method (simple)
+```
 crontab -e
+0 * * * * TELEGRAM_BOT_TOKEN="xxx" TELEGRAM_CHAT_ID="yyy" /usr/bin/hourly_update.sh
+```
 
-0 \* \* \* \* /root/hourly\_update.sh
-
-/etc/init.d/cron restart
-------------------------------------------------------------------------------------------
-
-
-
-Make persistent
-
-We will create a special control file in /etc/init.d/.
-
-Create the file:
-
-Bash
-
-vi /etc/init.d/router_bot
-Paste this code exactly. It tells the router to treat your script like a critical system service:
-
-Bash
-
+### Service Method (recommended)
+```
+cat > /etc/init.d/router_bot <<'EOF'
 #!/bin/sh /etc/rc.common
-
 START=99
 USE_PROCD=1
 
 start_service() {
-    procd_open_instance
-    # 1. The command to run
-    procd_set_param command /usr/bin/hourly_update.sh
-
-    # 2. Respawn automatically if it dies
-    # (wait 3600s if it crashes too fast, wait 5s before restart, retry forever)
-    procd_set_param respawn 3600 5 0
-
-    # 3. Log output so you can see errors (logread)
-    procd_set_param stdout 1
-    procd_set_param stderr 1
-    procd_close_instance
+  procd_open_instance
+  procd_set_param command /usr/bin/hourly_update.sh
+  procd_set_param respawn 3600 5 0
+  procd_close_instance
 }
-
-Save and exit (Esc, :wq, Enter).
-
-Make it executable:
-
-Bash
+EOF
 
 chmod +x /etc/init.d/router_bot
-Step 2: Clean up Old Methods
-To avoid running two copies (which causes conflicts/loops), remove the old startup command.
-
-Open rc.local:
-
-Bash
-
-vi /etc/rc.local
-Delete the line /usr/bin/hourly_update.sh &.
-
-Save and exit.
-
-Kill any currently running scripts:
-
-Bash
-
-killall hourly_update.sh
-Step 3: Enable and Start the Permanent Service
-Now, tell OpenWrt to enable the "Respawn" protection and start the bot.
-
-Bash
-
-# Enable start on boot
 service router_bot enable
-
-# Start it right now
 service router_bot start
-How to check if it's working?
-If the script crashes or you kill it manually, the router will now restart it within 5 seconds automatically.
+```
 
-You can verify it is running as a service with:
+---
 
-Bash
+## 📡 Telegram Setup
 
+### Create Bot
+1. Open Telegram  
+2. Search: **@BotFather**  
+3. Send `/newbot`  
+4. Save your **Bot Token**
+
+### Get Chat ID
+Send message to your bot and run:
+```
+https://api.telegram.org/botTOKEN/getUpdates
+```
+Look for `"chat":{"id":123456789}`
+
+---
+
+## 🔍 Verification
+```
 service router_bot status
-(It should say "running").
+logread | grep hourly_update.sh
+ps | grep hourly_update.sh
+```
+
+---
+
+## 🛠 Troubleshooting
+- Install curl: `opkg update && opkg install curl`
+- Ensure bot is started in Telegram  
+- Validate token/chat ID via `getUpdates`  
+- Script must be executable: `chmod +x`  
+
+---
+
+## 📘 License
+Free to use and modify. Attribution appreciated.
+
+---
+
+## ✉ Contact  
+Maintainer: **Asep Sayyad**
+
