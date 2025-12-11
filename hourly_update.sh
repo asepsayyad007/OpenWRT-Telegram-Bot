@@ -2,20 +2,35 @@
 
 # ================= CONFIGURATION =================
 # ⚠️ REPLACE WITH YOUR NEW TOKEN
-TOKEN="YOUR_TELEGRAM_API"
-CHAT_ID="YOU_CHAT_ID"
+TOKEN="YOUR_NEW_BOT_TOKEN_HERE"
+CHAT_ID="457218247"
 LOG="/var/log/router-hourly.log"
+LOCK_FILE="/var/run/router_bot.lock"  # Prevents multiple instances
 
-POLL_INTERVAL=10        # Check Telegram every 10s
-REPORT_INTERVAL=3600    # Auto-report every 1 hour
-
-# RUN STATE (Do not change)
+POLL_INTERVAL=10
+REPORT_INTERVAL=3600
 WAITING_FOR_RUN_CMD=0
 # =================================================
 
-LAST_UPDATE_ID=0
+# --- 🔒 SINGLETON CHECK (PREVENTS DUPLICATES) ---
+if [ -f "$LOCK_FILE" ]; then
+  # Check if the process ID in the lock file is actually running
+  PID=$(cat "$LOCK_FILE")
+  if ps | grep "^[[:space:]]*$PID " >/dev/null; then
+    echo "❌ Script is already running (PID: $PID). Exiting."
+    exit 1
+  fi
+fi
 
-# --- UTILITIES ---
+# Create new lock
+echo $$ > "$LOCK_FILE"
+
+# Ensure lock is removed when script exits (even if crashed)
+trap 'rm -f "$LOCK_FILE"; exit' INT TERM EXIT
+
+# =================================================
+
+LAST_UPDATE_ID=0
 
 send_msg() {
   /usr/bin/curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
@@ -43,15 +58,12 @@ get_public_ip() {
   curl -s --max-time 3 https://api.ipify.org || echo "Offline"
 }
 
-# --- GENERATORS ---
-
 generate_welcome() {
   HOSTNAME=$(cat /proc/sys/kernel/hostname)
   LAST_REBOOT=$(get_last_reboot_time)
   UP=$(human_uptime)
   PUB_IP=$(get_public_ip)
 
-  # RAM
   awk '/MemAvailable:/ {free=$2} /MemTotal:/ {total=$2} END {
      used=total-free
      p_free=int((free*100)/total)
@@ -62,7 +74,6 @@ generate_welcome() {
   }' /proc/meminfo > /tmp/ram_calc
   . /tmp/ram_calc
 
-  # SWAP
   awk '/SwapTotal:/ {total=$2} /SwapFree:/ {free=$2} END {
      if(total>0){
        used=total-free
@@ -94,15 +105,12 @@ generate_welcome() {
 generate_health() {
   UP=$(human_uptime)
   
-  # Simple RAM string
   awk '/MemAvailable:/ {free=$2} /MemTotal:/ {total=$2} END {
     u=int((total-free)/1024); t=int(total/1024); p=int((free*100)/total)
     print "RAM_STR=\"" u "MB / " t "MB (" p "% free)\""
   }' /proc/meminfo > /tmp/ram_simple
   . /tmp/ram_simple
 
-  # FIX: Uses $NF (Last Field) to capture command name reliably
-  # Format: PID -> Command -> User -> Mem(VSZ)
   TOP_LIST=$(top -b -n1 | head -n 10 | tail -n 5 | awk '{print $1 " -> " $NF " -> " $3 " -> " $5}')
 
   MSG="🏥 *Health Report*
@@ -135,29 +143,14 @@ generate_status() {
 generate_help() {
   MSG="📖 *Bot Command List*
 
-🔹 *TP STATUS*
-   - Checks Internet connectivity
-   - Shows WAN IP
-   - Counts connected clients
-
-🔹 *TP HEALTH*
-   - Shows Uptime & RAM usage
-   - Lists Top 5 CPU processes
-
-🔹 *TP RUN*
-   - Enters \"Execution Mode\"
-   - Blocks dangerous commands
-
-🔹 *TP REBOOT*
-   - Immediately reboots the router
-   
-🔹 *TP HELP*
-   - Shows this menu"
+🔹 *TP STATUS* - Network Check
+🔹 *TP HEALTH* - System Resources
+🔹 *TP RUN* - Execute Commands
+🔹 *TP REBOOT* - Restart Router
+🔹 *TP HELP* - Show this menu"
    
    echo "$MSG"
 }
-
-# --- CORE LOGIC ---
 
 flush_updates() {
   RESP=$(curl -s -m 10 "https://api.telegram.org/bot${TOKEN}/getUpdates")
@@ -183,7 +176,6 @@ check_updates() {
   if [ -n "$NEW_ID" ] && [ "$NEW_ID" != "$LAST_UPDATE_ID" ]; then
     LAST_UPDATE_ID="$NEW_ID"
     
-    # === EXECUTION MODE (TP RUN) ===
     if [ "$WAITING_FOR_RUN_CMD" -eq 1 ]; then
         SAFE_CMD=$(echo "$RAW_TEXT" | tr -d ';|&`$')
         if echo "$SAFE_CMD" | grep -Eq "rm|dd|mv|mkfs|reboot|poweroff|wget|curl"; then
@@ -200,8 +192,6 @@ $OUTPUT
         return
     fi
 
-    # === STANDARD COMMANDS ===
-    
     if echo "$RAW_TEXT" | grep -iq "^TP HEALTH$"; then
         send_msg "🏥 Generating Health Report..."
         REPORT=$(generate_health)
@@ -218,8 +208,7 @@ $OUTPUT
 
     elif echo "$RAW_TEXT" | grep -iq "^TP RUN$"; then
         WAITING_FOR_RUN_CMD=1
-        send_msg "⚠️ *Command Mode Active*
-Next message will be executed on the router."
+        send_msg "⚠️ *Command Mode Active*"
 
     elif echo "$RAW_TEXT" | grep -iq "^TP REBOOT$"; then
          send_msg "⚠️ *Reboot Initiated* (Bye!)"
@@ -228,8 +217,6 @@ Next message will be executed on the router."
     fi
   fi
 }
-
-# --- MAIN LOOP ---
 
 mkdir -p "$(dirname "$LOG")" 2>/dev/null
 touch "$LOG"
