@@ -40,17 +40,11 @@ Open your terminal and SSH into the router:
 
 ```bash
 
-ssh root@192.168.1.
-
-
-
-
+ssh root@192.168.1.1
 
 ##### \### 2. Install the Script
 
-
-
-1# Create the fileasddd
+1# Create the file
 
 vi /root/hourly\_update.sh
 
@@ -59,14 +53,11 @@ chmod +x /root/hourly\_update.sh
 /root/hourly\_update.sh
 
 
-
 ### ⏰ Automate (The Hourly Setup)
 
+crontab -e
 
+0 \* \* \* \* /root/hourly\_update.sh
 
-\# crontab -e
-
-\# 0 \* \* \* \* /root/hourly\_update.sh
-
-\# /etc/init.d/cron restart
+/etc/init.d/cron restart
 
