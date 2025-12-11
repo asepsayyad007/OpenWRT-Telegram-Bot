@@ -42,6 +42,39 @@ Author: **Asep Sayyad**
 ```
 
 ---
+## 📡 Telegram Setup
+
+### Create Bot
+1. Open Telegram  
+2. Search: **@BotFather**  
+3. Send `/newbot`  
+4. Save your **Bot Token**
+
+### Get Chat ID
+Send message to your bot and run:
+```
+https://api.telegram.org/botTOKEN/getUpdates
+```
+Look for `"chat":{"id":123456789}`
+
+---
+
+## 🔍 Verification
+```
+service router_bot status
+logread | grep hourly_update.sh
+ps | grep hourly_update.sh
+```
+
+---
+
+## 🛠 Troubleshooting
+- Install curl: `opkg update && opkg install curl`
+- Ensure bot is started in Telegram  
+- Validate token/chat ID via `getUpdates`  
+- Script must be executable: `chmod +x`  
+
+---
 
 ## ⚙️ Installation
 
@@ -126,39 +159,6 @@ service router_bot start
 
 ---
 
-## 📡 Telegram Setup
-
-### Create Bot
-1. Open Telegram  
-2. Search: **@BotFather**  
-3. Send `/newbot`  
-4. Save your **Bot Token**
-
-### Get Chat ID
-Send message to your bot and run:
-```
-https://api.telegram.org/botTOKEN/getUpdates
-```
-Look for `"chat":{"id":123456789}`
-
----
-
-## 🔍 Verification
-```
-service router_bot status
-logread | grep hourly_update.sh
-ps | grep hourly_update.sh
-```
-
----
-
-## 🛠 Troubleshooting
-- Install curl: `opkg update && opkg install curl`
-- Ensure bot is started in Telegram  
-- Validate token/chat ID via `getUpdates`  
-- Script must be executable: `chmod +x`  
-
----
 
 ## 📘 License
 Free to use and modify. Attribution appreciated.
