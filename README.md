@@ -1,10 +1,9 @@
-# 🌑 OpenWRT & Alpine Telegram Bot 🌑
+# 🌑 OpenWRT Telegram Bot 🌑
 Author: **Asep Sayyad**
 
 ---
 
 ![OpenWRT](https://img.shields.io/badge/OpenWRT-24.10.3-blue)  
-![Alpine Linux](https://img.shields.io/badge/Alpine-3.20-blue)
 ![Router](https://img.shields.io/badge/Router-TP--Link%20Archer%20C7%20V2-green)  
 ![Telegram](https://img.shields.io/badge/Telegram-Bot%20Monitoring-0A66C2)  
 ![Status](https://img.shields.io/badge/Status-Production%20Ready-brightgreen)
@@ -19,7 +18,7 @@ Author: **Asep Sayyad**
 - Wireless: AC1750 Dual-band  
 - USB: 2 × USB 2.0  
 - Limitations: No hardware VPN acceleration, low RAM but stable for Telegram monitoring  
-- Tested Firmware: **OpenWRT 24.10.3** & **Alpine Linux (x86_64 / armhf)**
+- Tested Firmware: **OpenWRT (Legacy and New apk/OpenRC Releases)**
 
 ---
 
@@ -34,7 +33,7 @@ Author: **Asep Sayyad**
   - `TP REBOOT` - Restart the router.
   - `TP HELP` - Display command options.
 - **Lightweight design**: Minimal CPU/RAM overhead, ideal for low-spec routers.
-- **Persistent execution**: Supported using OpenWRT's `procd` system or Alpine's `OpenRC` daemon manager.
+- **Persistent execution**: Supported using OpenWRT `procd` or `OpenRC` service managers (depending on your OpenWRT release).
 
 ---
 
@@ -69,7 +68,7 @@ Look for `"chat":{"id":123456789}` in the JSON response.
 
 ### 1. SSH into Router
 ```sh
-# For OpenWRT/Alpine Linux
+# For OpenWRT
 ssh root@192.168.1.1
 ```
 
@@ -460,7 +459,7 @@ service router_bot enable
 service router_bot start
 ```
 
-### Option B: Alpine Linux (OpenRC Service)
+### Option B: OpenWRT New Release (OpenRC Service)
 Create the OpenRC script:
 ```sh
 cat > /etc/init.d/router_bot <<'EOF'
@@ -501,7 +500,7 @@ Check that the background service is running:
   logread | grep hourly_update.sh
   ps | grep hourly_update.sh
   ```
-* **Alpine Linux**:
+* **OpenWRT (OpenRC releases)**:
   ```sh
   rc-service router_bot status
   tail -f /var/log/messages | grep hourly_update.sh
@@ -510,8 +509,8 @@ Check that the background service is running:
 
 ### Troubleshooting
 * **Missing curl**:
-  * **OpenWRT**: `opkg update && opkg install curl`
-  * **Alpine**: `apk update && apk add curl`
+  * **OpenWRT (Legacy / opkg)**: `opkg update && opkg install curl`
+  * **OpenWRT (New / apk)**: `apk update && apk add curl`
 * **Bot not responding**: Ensure you have sent `/start` to the bot on Telegram and that the Token and Chat ID are entered correctly.
 * **Permissions error**: Ensure the script is executable (`chmod +x /usr/bin/hourly_update.sh`).
 
