@@ -10,6 +10,10 @@ LOCK_FILE="/var/run/router_bot.lock"  # Prevents multiple instances
 POLL_INTERVAL=10
 REPORT_INTERVAL=3600
 WAITING_FOR_RUN_CMD=0
+
+# Resource Warning Thresholds (Set to empty/0 to disable)
+MEM_WARN_THRESHOLD=90    # Alert if memory usage exceeds 90%
+LOAD_WARN_THRESHOLD=90   # Alert if CPU load exceeds 90% (average load relative to core count)
 # =================================================
 
 # --- 🔒 SINGLETON CHECK (PREVENTS DUPLICATES) ---
@@ -38,6 +42,15 @@ send_msg() {
 }
 
 get_time_12h() { date '+%I:%M %p'; }
+
+get_os_version() {
+  . /etc/os-release
+  echo "$PRETTY_NAME"
+}
+
+get_kernel_version() {
+  uname -r
+}
 
 get_last_reboot_time() {
   UP_SEC=$(cut -d. -f1 /proc/uptime)
@@ -87,6 +100,9 @@ generate_welcome() {
   . /tmp/swap_calc
   
   OVERLAY=$(df -h /overlay 2>/dev/null | awk 'NR==2{print $2}')
+  if [ -z "$OVERLAY" ]; then
+    OVERLAY=$(df -h / 2>/dev/null | awk 'NR==2{print $2}')
+  fi
 
   MSG="🚀 *Router is Online*
 ---------------------------
@@ -150,6 +166,57 @@ generate_help() {
 🔹 *TP HELP* - Show this menu"
    
    echo "$MSG"
+}
+check_resource_thresholds() {
+  # Check memory
+  if [ -n "$MEM_WARN_THRESHOLD" ] && [ "$MEM_WARN_THRESHOLD" -gt 0 ]; then
+    total_mem=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
+    available_mem=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
+    if [ -n "$total_mem" ] && [ -n "$available_mem" ]; then
+      used_mem=$((total_mem - available_mem))
+      pct_used=$(( (used_mem * 100) / total_mem ))
+      if [ "$pct_used" -ge "$MEM_WARN_THRESHOLD" ]; then
+        if [ "${LAST_MEM_ALERT:-0}" -ne 1 ]; then
+          send_msg "⚠️ *High Memory Alert!*
+RAM usage is at ${pct_used}% (${pct_used}% used of $((total_mem / 1024))MB)"
+          LAST_MEM_ALERT=1
+        fi
+      else
+        LAST_MEM_ALERT=0
+      fi
+    fi
+  fi
+
+  # Check CPU load
+  if [ -n "$LOAD_WARN_THRESHOLD" ] && [ "$LOAD_WARN_THRESHOLD" -gt 0 ]; then
+    load_1m=$(awk '{print $1}' /proc/loadavg)
+    cores=$(grep -c ^processor /proc/cpuinfo)
+    [ "$cores" -eq 0 ] && cores=1
+    
+    alert_triggered=$(awk -v load="$load_1m" -v cores="$cores" -v threshold="$LOAD_WARN_THRESHOLD" '
+      BEGIN {
+        pct = (load / cores) * 100;
+        if (pct >= threshold) {
+          print "1 " int(pct);
+        } else {
+          print "0 " int(pct);
+        }
+      }
+    ')
+    
+    triggered=$(echo "$alert_triggered" | cut -d' ' -f1)
+    pct=$(echo "$alert_triggered" | cut -d' ' -f2)
+    
+    if [ "$triggered" -eq 1 ]; then
+      if [ "${LAST_CPU_ALERT:-0}" -ne 1 ]; then
+        send_msg "⚠️ *High CPU Load Alert!*
+Load average: ${load_1m} across ${cores} cores (approx ${pct}% utilization)"
+        LAST_CPU_ALERT=1
+      fi
+    else
+      LAST_CPU_ALERT=0
+    fi
+  fi
 }
 
 flush_updates() {
@@ -226,15 +293,51 @@ WELCOME=$(generate_welcome)
 send_msg "$WELCOME"
 
 SECONDS_COUNTER=0
+MONITOR_INTERVAL=300 # Check WAN IP and resource thresholds every 5 minutes
+MONITOR_COUNTER=$MONITOR_INTERVAL
+
+# Load last known IP from file
+IP_FILE="/tmp/last_wan_ip"
+LAST_KNOWN_IP=""
+if [ -f "$IP_FILE" ]; then
+  LAST_KNOWN_IP=$(cat "$IP_FILE")
+fi
+
+LAST_MEM_ALERT=0
+LAST_CPU_ALERT=0
 
 while true; do
   check_updates
+  
+  # Periodic WAN IP and resource utilization checks
+  if [ "$MONITOR_COUNTER" -ge "$MONITOR_INTERVAL" ] || [ -z "$LAST_KNOWN_IP" ]; then
+    # Check WAN IP changes
+    CURRENT_IP=$(get_public_ip)
+    if [ "$CURRENT_IP" != "Offline" ] && [ -n "$CURRENT_IP" ]; then
+      if [ -n "$LAST_KNOWN_IP" ] && [ "$CURRENT_IP" != "$LAST_KNOWN_IP" ]; then
+        send_msg "⚠️ *WAN IP Changed!*
+Old IP: $LAST_KNOWN_IP
+New IP: $CURRENT_IP"
+      fi
+      LAST_KNOWN_IP="$CURRENT_IP"
+      echo "$CURRENT_IP" > "$IP_FILE"
+    fi
+    
+    # Check Resource thresholds
+    check_resource_thresholds
+    
+    MONITOR_COUNTER=0
+  fi
+  
+  # Hourly report
   if [ "$SECONDS_COUNTER" -ge "$REPORT_INTERVAL" ]; then
     send_msg "🕒 *Hourly Update*"
     REPORT=$(generate_health)
     send_msg "$REPORT"
     SECONDS_COUNTER=0
   fi
+  
   sleep "$POLL_INTERVAL"
   SECONDS_COUNTER=$((SECONDS_COUNTER + POLL_INTERVAL))
+  MONITOR_COUNTER=$((MONITOR_COUNTER + POLL_INTERVAL))
 done
